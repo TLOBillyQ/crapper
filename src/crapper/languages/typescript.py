@@ -17,6 +17,7 @@ from crapper.languages.treesitter import (
     parse,
     start_line,
 )
+from crapper.languages.language import Language
 from crapper.model import Function
 
 _DECISIONS = {
@@ -178,3 +179,8 @@ def functions_in_source(
         elif node.type == "lexical_declaration":
             _append_arrows(found, data, node, module, path)
     return found
+
+
+class TypeScript(Language):
+    def functions(self, source: str, path: str, project_root: str) -> list[Function]:
+        return functions_in_source(source, path, project_root)

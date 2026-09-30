@@ -1,22 +1,27 @@
 """Per-language function extraction."""
 
-from crapper.languages import clojure, golang, java, python, rust, typescript
+from crapper.languages.clojure import Clojure
+from crapper.languages.golang import Go
+from crapper.languages.java import Java
+from crapper.languages.language import Unknown
+from crapper.languages.python import Python
+from crapper.languages.rust import Rust
+from crapper.languages.typescript import TypeScript
 from crapper.model import Function
+
+_LANGUAGES = {
+    "clojure": Clojure(),
+    "java": Java(),
+    "go": Go(),
+    "typescript": TypeScript(),
+    "python": Python(),
+    "rust": Rust(),
+}
+_UNKNOWN = Unknown()
 
 
 def functions_in_file(
     language: str, source: str, path: str, project_root: str
 ) -> list[Function]:
-    if language == "clojure":
-        return clojure.functions_in_source(source, path, project_root)
-    if language == "java":
-        return java.functions_in_source(source, path)
-    if language == "go":
-        return golang.functions_in_source(source, path, project_root)
-    if language == "typescript":
-        return typescript.functions_in_source(source, path, project_root)
-    if language == "python":
-        return python.functions_in_source(source, path, project_root)
-    if language == "rust":
-        return rust.functions_in_source(source, path, project_root)
-    return []
+    chosen = _LANGUAGES.get(language, _UNKNOWN)
+    return chosen.functions(source, path, project_root)
