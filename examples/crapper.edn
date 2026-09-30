@@ -185,7 +185,8 @@
     {:name "declared_namespace", :text "declared_namespace"}
     {:name "namespace_from_path", :text "namespace_from_path"}
     {:name "functions_in_source", :text "functions_in_source"}
-    {:name "Clojure", :text "Clojure"}],
+    {:name "Clojure", :text "Clojure"}
+    {:name "ClojureFactory", :text "ClojureFactory"}],
    :level 1,
    :lang :python,
    :id :languages.clojure}
@@ -195,7 +196,8 @@
    :ops
    [{:name "package_namespace", :text "package_namespace"}
     {:name "functions_in_source", :text "functions_in_source"}
-    {:name "Go", :text "Go"}],
+    {:name "Go", :text "Go"}
+    {:name "GoFactory", :text "GoFactory"}],
    :level 1,
    :lang :python,
    :id :languages.golang}
@@ -204,14 +206,19 @@
    :file "src/crapper/languages/java.py",
    :ops
    [{:name "functions_in_source", :text "functions_in_source"}
-    {:name "Java", :text "Java"}],
+    {:name "Java", :text "Java"}
+    {:name "JavaFactory", :text "JavaFactory"}],
    :level 1,
    :lang :python,
    :id :languages.java}
   {:ns "crapper.languages.language",
    :name "Language",
    :file "src/crapper/languages/language.py",
-   :ops [{:name "Language", :text "Language"} {:name "Unknown", :text "Unknown"}],
+   :ops
+   [{:name "Language", :text "Language"}
+    {:name "Unknown", :text "Unknown"}
+    {:name "LanguageFactory", :text "LanguageFactory"}
+    {:name "UnknownFactory", :text "UnknownFactory"}],
    :level 1,
    :lang :python,
    :id :languages.language}
@@ -220,7 +227,8 @@
    :file "src/crapper/languages/python.py",
    :ops
    [{:name "functions_in_source", :text "functions_in_source"}
-    {:name "Python", :text "Python"}],
+    {:name "Python", :text "Python"}
+    {:name "PythonFactory", :text "PythonFactory"}],
    :level 1,
    :lang :python,
    :id :languages.python}
@@ -229,7 +237,8 @@
    :file "src/crapper/languages/rust.py",
    :ops
    [{:name "functions_in_source", :text "functions_in_source"}
-    {:name "Rust", :text "Rust"}],
+    {:name "Rust", :text "Rust"}
+    {:name "RustFactory", :text "RustFactory"}],
    :level 1,
    :lang :python,
    :id :languages.rust}
@@ -254,7 +263,8 @@
    :file "src/crapper/languages/typescript.py",
    :ops
    [{:name "functions_in_source", :text "functions_in_source"}
-    {:name "TypeScript", :text "TypeScript"}],
+    {:name "TypeScript", :text "TypeScript"}
+    {:name "TypeScriptFactory", :text "TypeScriptFactory"}],
    :level 1,
    :lang :python,
    :id :languages.typescript}

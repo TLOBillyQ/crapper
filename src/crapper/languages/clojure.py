@@ -7,7 +7,7 @@ variants, `and`, `or`, `loop`, `catch`, and each clause of `cond`, `condp`,
 
 import re
 
-from crapper.languages.language import Language
+from crapper.languages.language import Language, LanguageFactory
 from crapper.model import Function
 
 _DECISION = re.compile(
@@ -291,3 +291,8 @@ def functions_in_source(
 class Clojure(Language):
     def functions(self, source: str, path: str, project_root: str) -> list[Function]:
         return functions_in_source(source, path, project_root)
+
+
+class ClojureFactory(LanguageFactory):
+    def create(self) -> Language:
+        return Clojure()

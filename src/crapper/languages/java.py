@@ -17,7 +17,7 @@ from crapper.languages.treesitter import (
     parse,
     start_line,
 )
-from crapper.languages.language import Language
+from crapper.languages.language import Language, LanguageFactory
 from crapper.model import Function
 
 _PACKAGE = re.compile(r"(?m)^\s*package\s+([a-zA-Z_][\w.]*)\s*;")
@@ -120,3 +120,8 @@ def functions_in_source(source: str, path: str) -> list[Function]:
 class Java(Language):
     def functions(self, source: str, path: str, project_root: str) -> list[Function]:
         return functions_in_source(source, path)
+
+
+class JavaFactory(LanguageFactory):
+    def create(self) -> Language:
+        return Java()
