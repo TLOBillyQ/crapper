@@ -37,6 +37,16 @@ def test_unscored_rows_sort_after_scored_rows():
     assert [row.name for row in rows] == ["worst", "mid", "missing"]
 
 
+def test_a_low_score_still_sorts_ahead_of_an_unscored_row():
+    rows = sort_entries(
+        [
+            entry(name="plain", crap=1.0, complexity=1),
+            entry(name="large", crap=None, coverage=None, complexity=8),
+        ]
+    )
+    assert [row.name for row in rows] == ["plain", "large"]
+
+
 def test_unscored_rows_sort_by_complexity():
     rows = sort_entries(
         [
@@ -65,6 +75,20 @@ def test_edn_uses_crap4clj_keys():
     assert ":coverage 82.0" in text
     assert ":crap 3.4" in text
     assert text.endswith("}\n")
+
+
+def test_edn_of_no_entries_is_an_empty_vector():
+    assert render_edn([]) == "{:entries []}\n"
+
+
+def test_metrics_directory_can_be_written_twice(tmp_path):
+    from crapper.metrics import write_metrics
+
+    entry_row = entry()
+    first = write_metrics([entry_row], tmp_path)
+    second = write_metrics([entry_row], tmp_path)
+    assert first == second
+    assert first.is_file()
 
 
 def test_edn_writes_nil_for_missing_coverage():

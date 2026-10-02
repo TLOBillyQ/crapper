@@ -1,7 +1,10 @@
 import subprocess
+import sys
 from pathlib import Path
 
-from crapper.cli import run
+import pytest
+
+from crapper.cli import _changed_files, _positionals, _take, main, parse_args, run
 from crapper.discover import language_of
 
 
@@ -163,5 +166,125 @@ def test_selects_directories_filters_and_changed_files(tmp_path, monkeypatch, ca
 
 def test_run_asks_for_coverage_when_it_is_enabled(tmp_path, monkeypatch):
     _write(tmp_path, "src/demo/core.clj", "(ns demo.core)\n\n(defn choose [x]\n  x)\n")
-    monkeypatch.setattr("crapper.cli.run_coverage", lambda *args: None)
+    called = []
+    monkeypatch.setattr("crapper.cli.run_coverage", lambda *args: called.append(args))
     assert run(["--root", str(tmp_path), "--coverage-command", "true"]) == 0
+    assert called
+
+
+def test_empty_option_value_is_rejected():
+    with pytest.raises(ValueError, match="requires a value"):
+        _take(["ok", "--opt", ""], 1, "--opt")
+    with pytest.raises(ValueError, match="requires a value"):
+        _take(["--opt", "-1"], 0, "--opt")
+
+
+def test_parse_args_reads_the_process_arguments_after_the_program(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["crapper", "--threshold", "5"])
+    options = parse_args()
+    assert options.threshold == 5.0
+    assert options.positionals == []
+    assert options.action == "analyze"
+
+
+def test_flags_that_only_store_a_boolean():
+    assert parse_args(["--use-existing-coverage"]).use_existing_coverage is True
+    assert parse_args(["--changed"]).changed is True
+    assert parse_args(["--no-coverage"]).no_coverage is True
+    conflict = parse_args(["--no-coverage", "--coverage-command", "true"])
+    assert conflict.exit_code == 1
+
+
+def test_changed_files_follow_git_status(tmp_path, monkeypatch, capsys):
+    seen = {}
+
+    class Result:
+        returncode = 0
+        stdout = "\nM  x\n?? sources/keep.py\n"
+        stderr = ""
+
+    def fake(*_args, **kwargs):
+        seen.update(kwargs)
+        return Result()
+
+    monkeypatch.setattr("crapper.cli.subprocess.run", fake)
+    found = _changed_files(tmp_path)
+    assert seen["check"] is False
+    assert seen["capture_output"] is True
+    assert seen["text"] is True
+    assert found == [
+        (tmp_path / "x").resolve(),
+        (tmp_path / "sources" / "keep.py").resolve(),
+    ]
+
+    class Failed:
+        returncode = 1
+        stdout = "?? sources/keep.py\n"
+        stderr = "git failed"
+
+    monkeypatch.setattr("crapper.cli.subprocess.run", lambda *_a, **_k: Failed())
+    assert _changed_files(tmp_path) == []
+    assert capsys.readouterr().err.strip() == "git failed"
+
+    class Silent:
+        returncode = 1
+        stdout = ""
+        stderr = ""
+
+    monkeypatch.setattr("crapper.cli.subprocess.run", lambda *_a, **_k: Silent())
+    assert _changed_files(tmp_path) == []
+    assert capsys.readouterr().err.strip() == "git status failed"
+
+
+def test_relative_paths_are_resolved_under_the_project_root(tmp_path):
+    _write(tmp_path, "src/demo/core.clj", "(ns demo.core)\n\n(defn choose [x]\n  (if x 1 0))\n")
+    existing, filters = _positionals(tmp_path, ["src/demo/core.clj"])
+    assert existing == [(tmp_path / "src/demo/core.clj").resolve()]
+    assert filters == []
+    assert run(["--root", str(tmp_path), "--no-coverage", "src/demo/core.clj"]) == 0
+    text = (tmp_path / ".metrics" / "crap.edn").read_text(encoding="utf-8")
+    assert ':name "choose"' in text
+    assert "parse_args" not in text
+
+
+def test_changed_selection_ignores_files_git_did_not_name(tmp_path, monkeypatch, capsys):
+    _write(tmp_path, "src/kept.clj", "(ns demo.kept)\n\n(defn kept [] 1)\n")
+    _write(tmp_path, "src/other.clj", "(ns demo.other)\n\n(defn other [] 1)\n")
+
+    class Result:
+        returncode = 0
+        stdout = "?? src/kept.clj\n"
+        stderr = ""
+
+    monkeypatch.setattr("crapper.cli.subprocess.run", lambda *_a, **_k: Result())
+    assert run(["--root", str(tmp_path), "--no-coverage", "--changed"]) == 0
+    text = (tmp_path / ".metrics" / "crap.edn").read_text(encoding="utf-8")
+    assert ':name "kept"' in text
+    assert "other" not in text
+    assert "No source files" not in capsys.readouterr().out
+
+
+def test_threshold_equal_to_the_score_is_allowed(tmp_path):
+    _write(tmp_path, "src/demo/core.clj", "(ns demo.core)\n\n(defn choose [] 1)\n")
+    lcov = tmp_path / "target" / "coverage" / "lcov.info"
+    lcov.parent.mkdir(parents=True)
+    lcov.write_text("SF:src/demo/core.clj\nDA:1,1\nDA:3,1\nend_of_record\n", encoding="utf-8")
+    code = run(
+        ["--root", str(tmp_path), "--use-existing-coverage", "--threshold", "1", "src/demo/core.clj"]
+    )
+    assert code == 0
+
+
+def test_threshold_with_no_scores_does_not_call_max_on_an_empty_list(tmp_path):
+    _write(tmp_path, "src/demo/core.clj", "(ns demo.core)\n\n(defn choose [] 1)\n")
+    assert run(["--root", str(tmp_path), "--no-coverage", "--threshold", "1"]) == 0
+
+
+def test_main_exits_with_the_status(monkeypatch):
+    monkeypatch.setattr("crapper.cli.run", lambda _argv=None: 4)
+    try:
+        main(["--help"])
+    except SystemExit as exc:
+        assert exc.code == 4
+    else:
+        raise AssertionError("main did not exit")

@@ -4,9 +4,15 @@ from pathlib import Path
 from crapper.discover import is_test_file
 from crapper.runners import (
     _clean_clojure,
+    _clean_dir,
+    _coverage_report,
+    _ensure_python_module,
     _ensure_vitest_coverage,
     _manifest_snapshot,
+    _prepare_report,
     _python_executable,
+    _python_kind,
+    _record_python_lcov,
     _restore_manifests,
     _rust_kind,
     _vitest_version,
@@ -14,6 +20,7 @@ from crapper.runners import (
     python_roots,
     python_sources,
     run_coverage,
+    run_shell,
     rust_coverage_command,
     rust_modules,
     typescript_command,
@@ -250,3 +257,177 @@ def test_missing_build_files_skip_that_language(tmp_path, monkeypatch):
         _write(tmp_path, "src/lib.rs", "pub fn open() {}\n"),
     ]
     run_coverage(tmp_path, files, None)
+
+
+def test_run_shell_returns_the_child_status_and_reports_a_failed_start(tmp_path, monkeypatch, capsys):
+    assert run_shell("exit 3", tmp_path) == 3
+
+    def boom(*_args, **_kwargs):
+        raise OSError("nope")
+
+    monkeypatch.setattr("crapper.runners.subprocess.run", boom)
+    assert run_shell("exit 3", tmp_path) == 127
+    assert "failed to start" in capsys.readouterr().err
+
+
+def test_clean_removes_a_stale_directory_and_ignores_a_missing_one(tmp_path):
+    stale = tmp_path / "target" / "coverage" / "old"
+    stale.mkdir(parents=True)
+    (stale / "lcov.info").write_text("x", encoding="utf-8")
+    kept = tmp_path / "target" / "coverage" / "python"
+    kept.mkdir()
+    _clean_clojure(tmp_path)
+    assert not stale.exists()
+    assert kept.is_dir()
+    _clean_dir(tmp_path / "target" / "coverage")
+    assert not (tmp_path / "target" / "coverage").exists()
+    _clean_clojure(tmp_path)
+    _clean_dir(tmp_path / "missing")
+
+
+def test_package_json_without_a_test_script_has_no_coverage_command(tmp_path):
+    assert typescript_command(tmp_path, [], tmp_path / "cov") is None
+    _write(tmp_path, "package.json", "{")
+    assert typescript_command(tmp_path, [], tmp_path / "cov") is None
+    _write(tmp_path, "package.json", "[]")
+    assert typescript_command(tmp_path, [], tmp_path / "cov") is None
+    _write(tmp_path, "package.json", '{"scripts": ["nope"]}')
+    assert typescript_command(tmp_path, [], tmp_path / "cov") is None
+
+
+def test_vitest_include_skips_a_file_outside_the_package(tmp_path):
+    from crapper.runners import _vitest_includes
+
+    package = tmp_path / "web"
+    _write(package, "src/app.ts", "export const n = 1\n")
+    outside = Path("/tmp/crapper-not-in-package.ts")
+    assert _vitest_includes(package, [package / "src" / "app.ts", outside]) == ["src/app.ts"]
+
+
+def test_nested_module_coverage_report_is_slugged(tmp_path):
+    module = tmp_path / "src-tauri"
+    module.mkdir()
+    report = _coverage_report(tmp_path, module, "rust")
+    assert report == tmp_path / "target" / "coverage" / "rust" / "src-tauri" / "lcov.info"
+
+
+def test_prepare_report_replaces_an_existing_directory(tmp_path):
+    report = tmp_path / "target" / "coverage" / "typescript" / "lcov.info"
+    report.parent.mkdir(parents=True)
+    (report.parent / "old.info").write_text("old", encoding="utf-8")
+    _prepare_report(report)
+    assert report.parent.is_dir()
+    assert not (report.parent / "old.info").exists()
+
+
+def test_pytest_detection_and_the_unittest_fallback(tmp_path, monkeypatch, capsys):
+    assert uses_pytest(tmp_path) is False
+    _write(tmp_path, "conftest.py", "")
+    assert uses_pytest(tmp_path) is True
+    monkeypatch.setattr("crapper.runners.run_shell", lambda *_args: 0)
+    assert _python_kind("python3", tmp_path) == "pytest"
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    assert _python_kind("python3", bare) == "unittest"
+    monkeypatch.setattr("crapper.runners._ensure_python_module", lambda *_args: False)
+    assert _python_kind("python3", tmp_path) == "unittest"
+    assert "Falling back to unittest" in capsys.readouterr().err
+
+
+def test_python_sources_ignore_a_file_outside_the_package(tmp_path):
+    inside = _write(tmp_path, "src/app.py", "def run():\n    return 1\n")
+    assert python_sources(tmp_path, [inside, Path("/tmp/crapper-outside.py")]) == "src"
+
+
+def test_missing_python_module_is_installed(tmp_path, monkeypatch):
+    commands = []
+
+    def shell(command, _cwd):
+        commands.append(command)
+        if command.startswith("python3 -c"):
+            return 1
+        return 0
+
+    monkeypatch.setattr("crapper.runners.run_shell", shell)
+    assert _ensure_python_module("python3", tmp_path, "coverage") is True
+    assert any("pip install" in command for command in commands)
+    commands.clear()
+
+    def already(_command, _cwd):
+        commands.append("probe")
+        return 0
+
+    monkeypatch.setattr("crapper.runners.run_shell", already)
+    assert _ensure_python_module("python3", tmp_path, "coverage") is True
+    assert commands == ["probe"]
+
+
+def test_python_lcov_warnings(tmp_path, monkeypatch, capsys):
+    data = tmp_path / ".coverage"
+    monkeypatch.setattr("crapper.runners.run_shell", lambda *_args: 1)
+    _record_python_lcov(tmp_path, 1, data, "lcov")
+    assert "Python coverage exited 1" in capsys.readouterr().err
+    _record_python_lcov(tmp_path, 0, data, "lcov")
+    assert capsys.readouterr().err == ""
+    data.write_text("x", encoding="utf-8")
+    _record_python_lcov(tmp_path, 0, data, "lcov")
+    assert "coverage lcov exited 1" in capsys.readouterr().err
+    monkeypatch.setattr("crapper.runners.run_shell", lambda *_args: 0)
+    _record_python_lcov(tmp_path, 7, data, "lcov")
+    assert "Coverage was still recorded" in capsys.readouterr().err
+
+
+def test_custom_coverage_command_failure_is_reported(tmp_path, capsys):
+    run_coverage(tmp_path, [], "exit 9")
+    assert "exited 9" in capsys.readouterr().err
+
+
+def test_clojure_without_a_build_file_is_skipped(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("crapper.runners.run_shell", lambda *_args: 0)
+    source = _write(tmp_path, "src/demo/core.clj", "(ns demo.core)\n(defn x [] 1)\n")
+    run_coverage(tmp_path, [source], None)
+    assert "skipping Clojure coverage" in capsys.readouterr().err
+
+
+def test_rust_kind_none_skips_rust_coverage(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("crapper.runners._rust_kind", lambda: None)
+    monkeypatch.setattr("crapper.runners.run_shell", lambda *_args: 0)
+    source = _write(tmp_path, "src/lib.rs", "pub fn open() {}\n")
+    _write(tmp_path, "Cargo.toml", '[package]\nname = "demo"\nversion = "0.1.0"\n')
+    run_coverage(tmp_path, [source], None)
+    assert "cargo" not in capsys.readouterr().err
+
+
+def test_tarpaulin_command_and_kind(monkeypatch):
+    monkeypatch.setattr(
+        "crapper.runners.shutil.which",
+        lambda name: "/bin/cargo-tarpaulin" if name == "cargo-tarpaulin" else None,
+    )
+    assert _rust_kind() == "tarpaulin"
+    report = Path("/tmp/book/target/coverage/rust/lcov.info")
+    assert "tarpaulin" in rust_coverage_command("tarpaulin", report)
+
+
+def test_typescript_without_a_test_script_is_skipped(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("crapper.runners.run_shell", lambda *_args: 0)
+    _write(tmp_path, "package.json", '{"scripts": {}}')
+    source = _write(tmp_path, "src/app.ts", "export const n = 1\n")
+    run_coverage(tmp_path, [source], None)
+    assert "No package.json test script" in capsys.readouterr().err
+
+
+def test_vitest_provider_failure_skips_typescript(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("crapper.runners.run_shell", lambda *_args: 1)
+    _write(tmp_path, "package.json", '{"scripts": {"test": "vitest run"}}')
+    source = _write(tmp_path, "src/app.ts", "export const n = 1\n")
+    run_coverage(tmp_path, [source], None)
+    assert "coverage provider is missing" in capsys.readouterr().err
+
+
+def test_python_coverage_module_missing_is_reported(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("crapper.runners._ensure_python_module", lambda *_args: False)
+    monkeypatch.setattr("crapper.runners.run_shell", lambda *_args: 0)
+    _write(tmp_path, "pyproject.toml", "[tool.pytest.ini_options]\n")
+    source = _write(tmp_path, "src/app.py", "def run():\n    return 1\n")
+    run_coverage(tmp_path, [source], None)
+    assert "coverage is missing" in capsys.readouterr().err
