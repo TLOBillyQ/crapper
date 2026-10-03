@@ -521,7 +521,6 @@ def lua_interpreter() -> str | None:
         binary = shutil.which(name)
         if binary and _lua_version(binary) == _LUA_VERSION:
             return str(Path(binary).resolve())
-    _warn("No Lua 5.4 interpreter (lua5.4 or lua) on PATH. Lua coverage will be N/A.")
     return None
 
 
@@ -575,6 +574,7 @@ def _record_lua_lcov(module: Path, code: int, stats: Path, report: Path, lcov_cm
 def _cover_lua(root: Path, files: list[Path]) -> None:
     lua = lua_interpreter()
     if lua is None:
+        _warn("No Lua 5.4 interpreter (lua5.4 or lua) on PATH. Lua coverage will be N/A.")
         return
     for module in lua_roots(root, files):
         report = _coverage_report(root, module, "lua")

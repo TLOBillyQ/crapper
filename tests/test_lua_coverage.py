@@ -50,11 +50,17 @@ def test_lua_interpreter_prefers_lua54_and_checks_the_version(monkeypatch):
     assert lua_interpreter() == str(Path("/opt/lua").resolve())
 
 
-def test_lua_interpreter_none_when_no_lua54(monkeypatch, capsys):
+def test_lua_interpreter_none_when_no_lua54(monkeypatch):
     monkeypatch.setattr("crapper.runners.shutil.which", lambda name: "/opt/lua")
     monkeypatch.setattr("crapper.runners._lua_version", lambda binary: "Lua 5.1")
     assert lua_interpreter() is None
+
+
+def test_missing_lua_leaves_coverage_na(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("crapper.runners.lua_interpreter", lambda: None)
+    run_coverage(tmp_path, [_write(tmp_path, "a.lua")], None)
     assert "Lua coverage will be N/A" in capsys.readouterr().err
+    assert not (tmp_path / "target").exists()
 
 
 def test_lua_coverage_config_and_commands(tmp_path):
