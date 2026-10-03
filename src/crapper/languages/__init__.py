@@ -4,6 +4,7 @@ from crapper.languages.clojure import ClojureFactory
 from crapper.languages.golang import GoFactory
 from crapper.languages.java import JavaFactory
 from crapper.languages.language import LanguageFactory, UnknownFactory
+from crapper.languages.lua import LuaFactory
 from crapper.languages.python import PythonFactory
 from crapper.languages.rust import RustFactory
 from crapper.languages.typescript import TypeScriptFactory
@@ -16,6 +17,7 @@ _FACTORIES: dict[str, LanguageFactory] = {
     "typescript": TypeScriptFactory(),
     "python": PythonFactory(),
     "rust": RustFactory(),
+    "lua": LuaFactory(),
 }
 _UNKNOWN = UnknownFactory()
 

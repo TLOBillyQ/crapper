@@ -57,7 +57,7 @@ def _clean_clojure(root: Path) -> None:
     coverage = root / "target" / "coverage"
     if not coverage.is_dir():
         return
-    keep = {"typescript", "rust", "go", "python"}
+    keep = {"typescript", "rust", "go", "python", "lua"}
     for path in coverage.iterdir():
         if path.name in keep:
             continue
@@ -476,6 +476,116 @@ def _cover_rust(root: Path, files: list[Path]) -> None:
             _warn(f"Rust coverage exited {code} in {module}. Rust coverage will be N/A.")
 
 
+_LUA_VERSION = "Lua 5.4"
+_LUA_EXCLUDE = ("^/", "^%a:", "_spec$", "^spec/", "/spec/", "^lua_modules/", "^%.luarocks/", "^target/")
+
+
+def _nearest_lua_root(start: Path, stop: Path) -> Path | None:
+    current = start if start.is_dir() else start.parent
+    stop = stop.resolve()
+    while True:
+        if (current / ".busted").is_file() or any(current.glob("*.rockspec")):
+            return current
+        if current == stop or current.parent == current:
+            return None
+        current = current.parent
+
+
+def lua_roots(root: Path, files: list[Path]) -> list[Path]:
+    """The nearest directory with `.busted` or a rockspec, else the project root."""
+
+    found: set[Path] = set()
+    root = root.resolve()
+    for file in files:
+        if Path(file).suffix != ".lua":
+            continue
+        module = _nearest_lua_root(Path(file).resolve(), root)
+        found.add((module or root).resolve())
+    return sorted(found)
+
+
+def _lua_version(binary: str) -> str:
+    try:
+        completed = subprocess.run(
+            [binary, "-e", "io.write(_VERSION)"], capture_output=True, text=True
+        )
+    except OSError:
+        return ""
+    return completed.stdout.strip()
+
+
+def lua_interpreter() -> str | None:
+    """An absolute path to a Lua 5.4 interpreter: `lua5.4` first, then `lua`."""
+
+    for name in ("lua5.4", "lua"):
+        binary = shutil.which(name)
+        if binary and _lua_version(binary) == _LUA_VERSION:
+            return str(Path(binary).resolve())
+    _warn("No Lua 5.4 interpreter (lua5.4 or lua) on PATH. Lua coverage will be N/A.")
+    return None
+
+
+def _lua_string(text: str) -> str:
+    return "[==[" + text + "]==]"
+
+
+def lua_coverage_config(stats: Path, report: Path) -> str:
+    exclude = ", ".join(_lua_string(pattern) for pattern in _LUA_EXCLUDE)
+    return (
+        "return {\n"
+        f"  statsfile = {_lua_string(str(stats))},\n"
+        f"  reportfile = {_lua_string(str(report))},\n"
+        "  includeuntestedfiles = true,\n"
+        f"  exclude = {{{exclude}}},\n"
+        "}\n"
+    )
+
+
+def lua_coverage_commands(lua: str, config: Path) -> tuple[str, str]:
+    cfg = shlex.quote(str(config))
+    run = f"busted --lua={shlex.quote(lua)} -c --coverage-config-file={cfg}"
+    lcov = f"luacov -r lcov -c {cfg}"
+    return run, lcov
+
+
+def absolute_lcov_sources(report: Path, module: Path) -> None:
+    """luacov writes paths relative to where busted ran. Anchor them to that directory."""
+
+    lines = []
+    for line in report.read_text(encoding="utf-8").splitlines():
+        if line.startswith("SF:") and not Path(line[3:]).is_absolute():
+            line = "SF:" + (module / line[3:]).as_posix()
+        lines.append(line)
+    report.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _record_lua_lcov(module: Path, code: int, stats: Path, report: Path, lcov_cmd: str) -> None:
+    if not stats.exists():
+        _warn(f"Lua coverage exited {code} in {module}. Lua coverage will be N/A.")
+        return
+    lcov_code = run_shell(lcov_cmd, module)
+    if lcov_code != 0 or not report.is_file():
+        _warn(f"luacov -r lcov exited {lcov_code} in {module}. Lua coverage will be N/A.")
+        return
+    absolute_lcov_sources(report, module)
+    if code != 0:
+        _warn(f"Lua tests exited {code} in {module}. Coverage was still recorded.")
+
+
+def _cover_lua(root: Path, files: list[Path]) -> None:
+    lua = lua_interpreter()
+    if lua is None:
+        return
+    for module in lua_roots(root, files):
+        report = _coverage_report(root, module, "lua")
+        _prepare_report(report)
+        stats = report.parent / "luacov.stats.out"
+        config = report.parent / "luacov.cfg.lua"
+        config.write_text(lua_coverage_config(stats, report), encoding="utf-8")
+        run_cmd, lcov_cmd = lua_coverage_commands(lua, config)
+        _record_lua_lcov(module, run_shell(run_cmd, module), stats, report, lcov_cmd)
+
+
 def run_coverage(root: Path, files: list[Path], command: str | None) -> None:
     """Generate coverage reports for the languages present in `files`."""
 
@@ -499,3 +609,5 @@ def run_coverage(root: Path, files: list[Path], command: str | None) -> None:
         _cover_python(root, files)
     if "rust" in languages:
         _cover_rust(root, files)
+    if "lua" in languages:
+        _cover_lua(root, files)

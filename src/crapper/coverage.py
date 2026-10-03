@@ -1,7 +1,7 @@
 """Load Cloverage, LCOV, JaCoCo, and Go coverage profiles.
 
 Clojure prefers Cloverage's per-line form counts, then LCOV. Java uses JaCoCo
-instruction counters. Go uses statement profiles. TypeScript and Rust use LCOV
+instruction counters. Go uses statement profiles. TypeScript, Rust, Python, and Lua use LCOV
 line hits. A file with no coverage data scores N/A rather than 0%.
 """
 
@@ -295,6 +295,7 @@ def _lcov_paths(root: Path) -> list[Path]:
         root / "target" / "coverage" / "typescript" / "lcov.info",
         root / "target" / "coverage" / "rust" / "lcov.info",
         root / "target" / "coverage" / "python" / "lcov.info",
+        root / "target" / "coverage" / "lua" / "lcov.info",
     ]
     paths.extend(root.glob("target/coverage/**/lcov.info"))
     paths.extend(root.glob("coverage/**/lcov.info"))

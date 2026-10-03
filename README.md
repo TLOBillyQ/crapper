@@ -1,6 +1,6 @@
 # crapper
 
-CRAP scores for Clojure, Java, Go, TypeScript, Rust, and Python. One run detects the language of each source file, applies that language's complexity and coverage rules, and writes the snapshot [uml-viewer](https://github.com/unclebob/uml-viewer) already reads.
+CRAP scores for Clojure, Java, Go, TypeScript, Rust, Python, and Lua. One run detects the language of each source file, applies that language's complexity and coverage rules, and writes the snapshot [uml-viewer](https://github.com/unclebob/uml-viewer) already reads.
 
 The formula is the one from [crap4clj](https://github.com/unclebob/crap4clj), [crap4java](https://github.com/unclebob/crap4java), and [crap4go](https://github.com/unclebob/crap4go):
 
@@ -52,6 +52,7 @@ uml-viewer groups entries by `:namespace` and joins each operation on `:name`. `
 | TypeScript | the dotted module path, or `module.Class` | the function or method name |
 | Rust | `crate::module`, or `crate::module::Type` | the function or method name |
 | Python | the dotted module path, or `module.Class` | the function or method name |
+| Lua | the `require` path (`src/`, `lua/`, `src/lua/` and a trailing `init` dropped) | the name as written: `helper`, `M.foo`, `Account:deposit` |
 
 Rename or move is a new entry. There is no identity matching across runs.
 
@@ -69,6 +70,8 @@ Rust counts `if`, loops, each `match` arm, `?`, and `&&` / `||`. `mod tests` is 
 
 Python counts `if`, `elif`, `for`, `while`, `except`, each `match` case, a comprehension filter, a conditional expression, and each `and` / `or`. Nested functions stay inside the enclosing function. Coverage is LCOV from `coverage.py`, running pytest when the project uses it and `unittest` otherwise. `coverage` and `pytest` are installed into the project's interpreter when they are missing.
 
+Lua counts `if`, `elseif`, `while`, `repeat`, both `for` forms, and each `and` / `or`. `goto` does not count. Function declarations and function expressions assigned to a name are entries; nested functions and unassigned closures stay inside the enclosing function. Coverage is LCOV from busted with luacov and `luacov-reporter-lcov`, run with a Lua 5.4 interpreter (`lua5.4`, then `lua`) in the nearest directory that contains `.busted` or a rockspec. Nothing is installed automatically.
+
 ## Coverage commands
 
 By default a run deletes the previous report for each language it is about to measure and regenerates it:
@@ -81,6 +84,7 @@ By default a run deletes the previous report for each language it is about to me
 | TypeScript | `npm run coverage`, or Vitest `--coverage`, or `npx c8 ... npm test` | `coverage/lcov.info` or `target/coverage/typescript/lcov.info` |
 | Rust | `cargo llvm-cov` or `cargo tarpaulin`, per Cargo package | `target/coverage/rust/lcov.info` |
 | Python | `coverage run` with pytest or unittest, then `coverage lcov` | `target/coverage/python/lcov.info` |
+| Lua | `busted --lua=<lua5.4> -c`, then `luacov -r lcov` | `target/coverage/lua/lcov.info` |
 
 A missing tool or a failed test run leaves that language at N/A and still writes the snapshot. Pass `--coverage-command` to replace those defaults with one command of your own.
 

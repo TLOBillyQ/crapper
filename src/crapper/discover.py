@@ -16,6 +16,7 @@ EXTENSIONS = {
     ".cts": "typescript",
     ".rs": "rust",
     ".py": "python",
+    ".lua": "lua",
 }
 
 SKIP_DIRS = {
@@ -36,6 +37,8 @@ SKIP_DIRS = {
     "testdata",
     "__pycache__",
     ".clj-kondo",
+    "lua_modules",
+    ".luarocks",
 }
 
 TEST_DIRS = {"test", "tests", "spec", "specs", "__tests__"}
@@ -66,6 +69,8 @@ def is_test_file(path: str | Path) -> bool:
             ".spec.mts",
         )
     ):
+        return True
+    if name.endswith("_spec.lua"):
         return True
     if name == "conftest.py":
         return True

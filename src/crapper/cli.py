@@ -22,7 +22,7 @@ CRAP = CC² × (1 − coverage)³ + CC. Writes .metrics/crap.edn for uml-viewer
 and prints a report sorted worst first.
 
 Languages: Clojure (.clj .cljc .cljs .bb), Java (.java), Go (.go),
-TypeScript (.ts .tsx .mts .cts), Rust (.rs), Python (.py).
+TypeScript (.ts .tsx .mts .cts), Rust (.rs), Python (.py), Lua (.lua).
 
 Options:
   -h, --help                    Print this help and exit.
@@ -46,7 +46,7 @@ Arguments:
 
 With no paths, source files under the project root are analyzed. Directories
 named test, tests, spec, specs, vendor, node_modules, and target are skipped,
-as are *_test.go, *.spec.ts, test_*.py, and *_test.py files.
+as are *_test.go, *.spec.ts, test_*.py, *_test.py, and *_spec.lua files.
 
 Coverage, when it is produced:
   Clojure      clj -M:cov --lcov, then Cloverage form counts or LCOV
@@ -55,6 +55,7 @@ Coverage, when it is produced:
   TypeScript   npm run coverage, Vitest's own LCOV, or c8 around npm test
   Rust         cargo llvm-cov, or cargo tarpaulin, in the nearest Cargo.toml
   Python       coverage.py LCOV, via pytest or unittest, per project
+  Lua          busted -c with luacov, then luacov -r lcov, per .busted or rockspec
 
 uml-viewer joins .metrics/crap.edn on :namespace and :name.
   Clojure      the ns, and the defn name
@@ -63,6 +64,7 @@ uml-viewer joins .metrics/crap.edn on :namespace and :name.
   TypeScript   dotted module path, or module.Class for methods
   Rust         crate::module, or crate::module::Type for methods
   Python       dotted module path, or module.Class for methods
+  Lua          require path, and the name as written (M.foo, Class:method)
 """
 
 
