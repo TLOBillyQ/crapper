@@ -88,6 +88,26 @@ By default a run deletes the previous report for each language it is about to me
 
 A missing tool or a failed test run leaves that language at N/A and still writes the snapshot. Pass `--coverage-command` to replace those defaults with one command of your own.
 
+## Windows
+
+crapper runs on Windows through WSL2 with Ubuntu. Native Windows is not supported.
+
+1. In an administrator PowerShell, run `wsl --install` and reboot.
+2. Open Ubuntu and clone into the Linux home directory, not `/mnt/c`.
+   Windows drives are slow under WSL2 and break symlinks:
+
+   ```bash
+   cd ~
+   git clone -b lua https://github.com/TLOBillyQ/crapper.git
+   ```
+
+3. Run `crapper/scripts/setup-ubuntu.sh`. It installs Python, Lua 5.4,
+   busted, luacov, and luacov-reporter-lcov, then creates `.venv`.
+4. Edit in VS Code with the WSL extension (`code .` from Ubuntu).
+
+crapper warns at startup when it runs on native Windows or on a project
+under `/mnt/`.
+
 ## Development
 
 ```bash
