@@ -34,6 +34,7 @@ SKIP_DIRS = {
     "out",
     "coverage",
     ".metrics",
+    ".uml-viewer",
     "testdata",
     "__pycache__",
     ".clj-kondo",
