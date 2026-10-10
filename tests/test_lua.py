@@ -1,3 +1,10 @@
+import shutil
+from pathlib import Path
+
+import pytest
+
+from crapper.analyze import analyze_files
+from crapper.cli import parse_args, run, select_files
 from crapper.discover import is_test_file, language_of
 from crapper.languages.lua import functions_in_source
 
@@ -111,3 +118,85 @@ def test_lua_files_and_busted_specs_are_recognized():
     assert is_test_file("src/demo/app_spec.lua")
     assert is_test_file("spec/app.lua")
     assert not is_test_file("src/demo/app.lua")
+
+
+@pytest.fixture
+def installed_lua_project(tmp_path):
+    fixture = Path(__file__).parent / "fixtures" / "lua_project"
+    shutil.copytree(fixture, tmp_path, dirs_exist_ok=True)
+    for tool in ("crapper", "mutator", "uml-viewer"):
+        shutil.copytree(fixture, tmp_path / ".uml-viewer" / tool / "lua-fixture")
+    shutil.copytree(
+        fixture,
+        tmp_path / ".uml-viewer" / "uml-viewer" / ".uml-viewer" / "lua-fixture",
+    )
+    (tmp_path / ".gitignore").write_text(".uml-viewer/\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_default_lua_scan_excludes_installed_tooling(installed_lua_project):
+    root = installed_lua_project
+    files = select_files(parse_args(["--root", str(root)]))
+    entries = analyze_files(files, root, None)
+    assert {(entry.namespace, entry.name) for entry in entries} == {
+        ("calc", "M.classify"),
+        ("calc", "M.total"),
+        ("calc.util", "between"),
+        ("calc.util", "M.clamp"),
+        ("calc.util", "M.untested"),
+    }
+    assert len(entries) == 5
+    assert run(["--root", str(root), "--no-coverage"]) == 0
+    snapshot = (root / ".metrics" / "crap.edn").read_text(encoding="utf-8")
+    assert ".uml-viewer" not in snapshot
+
+
+@pytest.mark.parametrize(
+    "selection, expected_files, expected_entries",
+    [
+        (["-s", "src"], ["src/calc/init.lua", "src/calc/util.lua"], 5),
+        (
+            ["-s", ".uml-viewer"],
+            [
+                ".uml-viewer/crapper/lua-fixture/src/calc/init.lua",
+                ".uml-viewer/crapper/lua-fixture/src/calc/util.lua",
+                ".uml-viewer/mutator/lua-fixture/src/calc/init.lua",
+                ".uml-viewer/mutator/lua-fixture/src/calc/util.lua",
+                ".uml-viewer/uml-viewer/lua-fixture/src/calc/init.lua",
+                ".uml-viewer/uml-viewer/lua-fixture/src/calc/util.lua",
+            ],
+            15,
+        ),
+        (
+            [".uml-viewer"],
+            [
+                ".uml-viewer/crapper/lua-fixture/src/calc/init.lua",
+                ".uml-viewer/crapper/lua-fixture/src/calc/util.lua",
+                ".uml-viewer/mutator/lua-fixture/src/calc/init.lua",
+                ".uml-viewer/mutator/lua-fixture/src/calc/util.lua",
+                ".uml-viewer/uml-viewer/lua-fixture/src/calc/init.lua",
+                ".uml-viewer/uml-viewer/lua-fixture/src/calc/util.lua",
+            ],
+            15,
+        ),
+        (
+            ["-s", ".uml-viewer/crapper/lua-fixture/src/calc/init.lua"],
+            [".uml-viewer/crapper/lua-fixture/src/calc/init.lua"],
+            2,
+        ),
+        (
+            [".uml-viewer/crapper/lua-fixture/src/calc/init.lua"],
+            [".uml-viewer/crapper/lua-fixture/src/calc/init.lua"],
+            2,
+        ),
+    ],
+)
+def test_explicit_lua_sources_override_tooling_pruning(
+    installed_lua_project, selection, expected_files, expected_entries
+):
+    root = installed_lua_project
+    argv = ["--root", str(root), "--no-coverage", *selection]
+    files = select_files(parse_args(argv))
+    assert [path.relative_to(root).as_posix() for path in files] == expected_files
+    assert len(analyze_files(files, root, None)) == expected_entries
+    assert run(argv) == 0
