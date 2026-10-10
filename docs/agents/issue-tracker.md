@@ -11,7 +11,11 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
-Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
+The tracker is `TLOBillyQ/crapper`. Add `--repo TLOBillyQ/crapper` to every `gh issue` and `gh pr` command above and below; use `repos/TLOBillyQ/crapper/...` for API endpoints. This clone also has an upstream remote, so automatic repository inference can select another tracker.
+
+## Implementation completion
+
+Close implementation tickets after the final reviewed and tested commit is pushed to the target branch, or its PR is merged. Confirm the remote commit or merged PR and link it with the validation result in the closing comment. Local integration commits and open draft PRs leave tickets open. Publishing still requires the user's authorization; when publishing is pending, report the local branch and pending completion condition.
 
 ## Pull requests as a triage surface
 

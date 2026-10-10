@@ -121,8 +121,21 @@ Under WSL2, crapper warns when the project is under `/mnt/`.
 
 ## Development
 
+On Windows, prepare and verify an environment for the current checkout:
+
+```powershell
+.\scripts\setup-dev.ps1
+.\.venv\Scripts\python.exe -m pytest
+```
+
+Pass `-Python "C:\path\to\python.exe"` to select the interpreter used to create `.venv`. The setup installs `.[dev]` and verifies the parser dependencies and checkout imports. Run it in each worktree, and give agents the verified interpreter's absolute path.
+
+On Linux or macOS:
+
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e '.[dev]'
-.venv/bin/pytest
+.venv/bin/python -m pip install -e '.[dev]'
+.venv/bin/python -m pytest
 ```
+
+Local runs without the Lua toolchain can skip integration tests, so check the pytest summary before claiming Lua coverage was validated.
