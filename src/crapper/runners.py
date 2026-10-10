@@ -588,7 +588,9 @@ def lua_coverage_commands(lua: str, config: Path) -> tuple[list[str], list[str]]
     # joins arguments into a shell string; LuaRocks BAT launchers add another
     # shell boundary. Module entrypoints avoid both on Windows and POSIX.
     loader = _lua_package_setup(lua) + "pcall(require, 'luarocks.loader'); "
-    run = [lua, "-e", loader + "require('busted.runner')({standalone = false})",
+    # Busted exits on failure but returns on success in non-standalone mode.
+    # Stop Lua before it treats the argv placeholder "busted" as a script.
+    run = [lua, "-e", loader + "require('busted.runner')({standalone = false}); os.exit(0)",
            "--", "busted", "--ignore-lua", "-c", f"--coverage-config-file={config}"]
     lcov = [lua, "-e", loader +
             "local r = require('luacov.runner'); local c = r.load_config(arg[1]); "

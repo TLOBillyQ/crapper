@@ -115,6 +115,37 @@ def test_lua_executable_reads_config_paths_with_spaces(tmp_path):
 
 
 @pytest.mark.skipif(not _toolchain_ready(), reason="busted, luacov, and Lua 5.4 are not installed")
+@pytest.mark.parametrize("failing", [False, True])
+def test_busted_bootstrap_exits_after_running_tests(tmp_path, capfd, failing):
+    project = tmp_path / "lua project with spaces"
+    _write(project, ".busted", "return {default = {lpath = 'src/?.lua'}}")
+    _write(project, "src/calc.lua", "return {value = function() return 42 end}\n")
+    expected = 0 if failing else 42
+    _write(project, "spec/calc_spec.lua",
+           "local calc = require('calc')\n"
+           "describe('calc', function()\n"
+           "  it('passes', function() assert.equals(42, calc.value()) end)\n"
+           f"  it('checks value', function() assert.equals({expected}, calc.value()) end)\n"
+           "end)\n")
+    stats = project / "stats file"
+    report = project / "report file"
+    config = _write(project, "config directory/luacov.cfg.lua",
+                    lua_coverage_config(stats, report))
+    run, lcov = lua_coverage_commands(lua_interpreter(), config)
+    code = run_shell(run, project)
+    output = capfd.readouterr()
+    assert "cannot open busted" not in output.err
+    assert ("1 success / 1 failure" if failing else "2 successes / 0 failures") in output.out
+    assert code == (1 if failing else 0)
+    assert stats.is_file()
+    assert run_shell(lcov, project) == 0
+    text = report.read_text(encoding="utf-8")
+    source_record = next(record for record in text.replace("\\", "/").split("end_of_record")
+                         if "SF:src/calc.lua\n" in record)
+    assert "LH:1\n" in source_record
+
+
+@pytest.mark.skipif(not _toolchain_ready(), reason="busted, luacov, and Lua 5.4 are not installed")
 @pytest.mark.parametrize("runtime_with_spaces", [False, True])
 def test_fixture_project_end_to_end(tmp_path, monkeypatch, runtime_with_spaces):
     if runtime_with_spaces:
