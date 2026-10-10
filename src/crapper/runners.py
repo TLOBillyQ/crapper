@@ -526,6 +526,21 @@ def lua_interpreter() -> str | None:
     for name in ("lua5.4", "lua"):
         binary = shutil.which(name)
         if binary and _lua_version(binary) == _LUA_VERSION:
+            if Path(binary).suffix.lower() in (".bat", ".cmd"):
+                # Lua's arg[0] identifies the executable behind a PATH wrapper.
+                # Never send the coverage/config argv back through that wrapper.
+                try:
+                    probe = subprocess.run(
+                        [binary, "-e", "io.write(arg[0])"], capture_output=True, text=True
+                    )
+                except OSError:
+                    continue
+                native = probe.stdout.strip()
+                if not Path(native).is_file() or Path(native).suffix.lower() != ".exe":
+                    continue
+                if _lua_version(native) != _LUA_VERSION:
+                    continue
+                binary = native
             return str(Path(binary).resolve())
     return None
 
@@ -546,9 +561,39 @@ def lua_coverage_config(stats: Path, report: Path) -> str:
     )
 
 
+def _lua_package_setup(lua: str) -> str:
+    # A LuaRocks/PATH wrapper may set module paths that the native executable
+    # does not inherit. Probe only fixed code, then carry those paths as Lua
+    # string literals in the native bootstrap, never shell arguments.
+    for name in ("lua5.4", "lua"):
+        wrapper = shutil.which(name)
+        if not wrapper or Path(wrapper).suffix.lower() not in (".bat", ".cmd"):
+            continue
+        try:
+            probe = subprocess.run(
+                [wrapper, "-e", "io.write(arg[0],string.char(10),package.path,string.char(10),package.cpath)"],
+                capture_output=True, text=True,
+            )
+        except OSError:
+            continue
+        lines = probe.stdout.splitlines()
+        if probe.returncode == 0 and len(lines) == 3 and Path(lines[0]).resolve() == Path(lua).resolve():
+            return (f"package.path = {json.dumps(lines[1], ensure_ascii=False)}; "
+                    f"package.cpath = {json.dumps(lines[2], ensure_ascii=False)}; ")
+    return ""
+
+
 def lua_coverage_commands(lua: str, config: Path) -> tuple[list[str], list[str]]:
-    run = ["busted", f"--lua={lua}", "-c", f"--coverage-config-file={config}"]
-    lcov = ["luacov", "-r", "lcov", "-c", str(config)]
+    # Run both tools in the selected interpreter. Busted's --lua re-execution
+    # joins arguments into a shell string; LuaRocks BAT launchers add another
+    # shell boundary. Module entrypoints avoid both on Windows and POSIX.
+    loader = _lua_package_setup(lua) + "pcall(require, 'luarocks.loader'); "
+    run = [lua, "-e", loader + "require('busted.runner')({standalone = false})",
+           "--", "busted", "-c", f"--coverage-config-file={config}"]
+    lcov = [lua, "-e", loader +
+            "local r = require('luacov.runner'); local c = r.load_config(arg[1]); "
+            "c.reporter = 'lcov'; r.run_report(c); os.exit(0)",
+            "--", "luacov", str(config)]
     return run, lcov
 
 

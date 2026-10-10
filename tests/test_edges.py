@@ -165,7 +165,7 @@ def test_files_outside_the_project_keep_an_absolute_path(tmp_path):
     outside.write_text("package demo\nfunc Place() int { return 1 }\n", encoding="utf-8")
     entries = analyze_files([outside], tmp_path / "other", None)
     assert entries[0].name == "Place"
-    assert entries[0].path == str(outside.resolve())
+    assert entries[0].path == outside.resolve().as_posix()
     assert analyze_files([tmp_path / "notes.md"], tmp_path, None) == []
 
 
