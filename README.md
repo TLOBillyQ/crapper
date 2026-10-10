@@ -84,13 +84,25 @@ By default a run deletes the previous report for each language it is about to me
 | TypeScript | `npm run coverage`, or Vitest `--coverage`, or `npx c8 ... npm test` | `coverage/lcov.info` or `target/coverage/typescript/lcov.info` |
 | Rust | `cargo llvm-cov` or `cargo tarpaulin`, per Cargo package | `target/coverage/rust/lcov.info` |
 | Python | `coverage run` with pytest or unittest, then `coverage lcov` | `target/coverage/python/lcov.info` |
-| Lua | `busted --lua=<lua5.4> -c`, then `luacov -r lcov` | `target/coverage/lua/lcov.info` |
+| Lua | Lua 5.4 runs the Busted and LuaCov entrypoint modules with coverage and the LCOV reporter | `target/coverage/lua/lcov.info` |
 
 A missing tool or a failed test run leaves that language at N/A and still writes the snapshot. Pass `--coverage-command` to replace those defaults with one command of your own.
 
 ## Windows
 
-crapper runs on Windows through WSL2 with Ubuntu. Native Windows is not supported.
+crapper supports native Windows. Install Python 3.11 or later, then run these commands in PowerShell from the crapper checkout:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e '.[dev]'
+.\.venv\Scripts\crapper.exe --root "C:\path\to\project"
+```
+
+Install the coverage tools for the languages in your project separately. Lua coverage needs Lua 5.4, busted, luacov, and luacov-reporter-lcov. Put `lua5.4` or `lua` on PATH. crapper resolves Windows Lua wrappers to the native interpreter and runs the coverage modules directly, so interpreter, project, and configuration paths can contain spaces.
+
+The full test suite and Lua coverage with paths containing spaces were validated on Windows 11 with Python 3.12 and Lua 5.4.6. This does not verify every language's external coverage toolchain. Built-in commands use argument vectors; custom `--coverage-command` strings use the Windows shell.
+
+WSL2 with Ubuntu is also an installation option:
 
 1. In an administrator PowerShell, run `wsl --install` and reboot.
 2. Open Ubuntu and clone into the Linux home directory, not `/mnt/c`.
@@ -105,8 +117,7 @@ crapper runs on Windows through WSL2 with Ubuntu. Native Windows is not supporte
    busted, luacov, and luacov-reporter-lcov, then creates `.venv`.
 4. Edit in VS Code with the WSL extension (`code .` from Ubuntu).
 
-crapper warns at startup when it runs on native Windows or on a project
-under `/mnt/`.
+Under WSL2, crapper warns when the project is under `/mnt/`.
 
 ## Development
 

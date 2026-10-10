@@ -224,11 +224,9 @@ def select_files(options: Options) -> list[Path]:
 
 
 def platform_warning(platform: str, root: Path) -> str | None:
-    """Windows runs crapper inside WSL2, with the project in the Linux filesystem."""
+    """Suggest the Linux filesystem for Windows-mounted projects under WSL2."""
 
-    if platform == "win32":
-        return "Native Windows is not supported. Run crapper inside WSL2; see the README."
-    if root.as_posix().startswith("/mnt/"):
+    if platform != "win32" and root.as_posix().startswith("/mnt/"):
         return (
             f"{root} is on a Windows drive. Under WSL2, clone the project under ~/ "
             "for speed and working symlinks."
