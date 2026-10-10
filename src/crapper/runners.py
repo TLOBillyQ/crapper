@@ -589,7 +589,7 @@ def lua_coverage_commands(lua: str, config: Path) -> tuple[list[str], list[str]]
     # shell boundary. Module entrypoints avoid both on Windows and POSIX.
     loader = _lua_package_setup(lua) + "pcall(require, 'luarocks.loader'); "
     run = [lua, "-e", loader + "require('busted.runner')({standalone = false})",
-           "--", "busted", "-c", f"--coverage-config-file={config}"]
+           "--", "busted", "--ignore-lua", "-c", f"--coverage-config-file={config}"]
     lcov = [lua, "-e", loader +
             "local r = require('luacov.runner'); local c = r.load_config(arg[1]); "
             "c.reporter = 'lcov'; r.run_report(c); os.exit(0)",

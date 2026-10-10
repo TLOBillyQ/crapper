@@ -75,7 +75,7 @@ def test_lua_coverage_config_and_commands(tmp_path):
     assert "[==[_spec$]==]" in config
     run, lcov = lua_coverage_commands("/opt/lua 5.4/bin/lua", tmp_path / "cfg.lua")
     assert run[0] == lcov[0] == "/opt/lua 5.4/bin/lua"
-    assert run[-3:] == ["busted", "-c", f"--coverage-config-file={tmp_path / 'cfg.lua'}"]
+    assert run[-4:] == ["busted", "--ignore-lua", "-c", f"--coverage-config-file={tmp_path / 'cfg.lua'}"]
     assert lcov[-2:] == ["luacov", str(tmp_path / "cfg.lua")]
 
 
@@ -128,6 +128,8 @@ def test_fixture_project_end_to_end(tmp_path, monkeypatch, runtime_with_spaces):
         monkeypatch.setattr("crapper.runners.lua_interpreter", lambda: executable)
     project = tmp_path / "lua project with spaces"
     shutil.copytree(FIXTURE, project)
+    if runtime_with_spaces:
+        _write(project, ".busted", "return {default = {lpath = 'src/?.lua;src/?/init.lua', lua = 'missing-lua'}}")
     monkeypatch.chdir(project)
     files = iter_source_files([project])
     run_coverage(project, files, None)
