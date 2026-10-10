@@ -1,4 +1,8 @@
 import json
+import os
+import sys
+
+import pytest
 from pathlib import Path
 
 from crapper.discover import is_test_file
@@ -49,7 +53,7 @@ def test_vitest_uses_its_own_coverage_instead_of_c8(tmp_path):
     command = typescript_command(tmp_path, [source, tmp_path / "src" / "book.test.ts"], report_dir)
     assert command is not None
     assert "c8" not in command
-    assert "vitest run --coverage" in command
+    assert command[:3] == ["npx", "vitest", "run"]
     assert "--coverage.reporter=lcov" in command
     assert f"--coverage.reportsDirectory={report_dir}" in command
     assert "--coverage.include=src/book.ts" in command
@@ -63,14 +67,14 @@ def test_existing_coverage_script_is_left_alone(tmp_path):
         json.dumps({"scripts": {"coverage": "vitest run --coverage", "test": "vitest run"}}),
     )
     command = typescript_command(tmp_path, [], tmp_path / "coverage")
-    assert command == "npm run coverage"
+    assert command == ["npm", "run", "coverage"]
 
 
 def test_node_test_script_still_uses_c8(tmp_path):
     _write(tmp_path, "package.json", json.dumps({"scripts": {"test": "node --test"}}))
     report_dir = tmp_path / "target" / "coverage" / "typescript"
     command = typescript_command(tmp_path, [], report_dir)
-    assert command == f"npx --yes c8 --reporter=lcov --reports-dir {report_dir} npm test"
+    assert command == ["npx", "--yes", "c8", "--reporter=lcov", "--reports-dir", str(report_dir), "npm", "test"]
 
 
 def test_typescript_package_is_found_from_a_source_file(tmp_path):
@@ -112,10 +116,8 @@ def test_python_project_uses_pytest_and_coverage_lcov(tmp_path):
     data = tmp_path / "target" / "coverage" / "python" / ".coverage"
     report = data.parent / "lcov.info"
     run, lcov = python_coverage_commands("python3", "pytest", data, report, "src")
-    assert run == (
-        f"python3 -m coverage run --data-file={data} --source=src -m pytest"
-    )
-    assert lcov == f"python3 -m coverage lcov --data-file={data} -o {report}"
+    assert run == ["python3", "-m", "coverage", "run", f"--data-file={data}", "--source=src", "-m", "pytest"]
+    assert lcov == ["python3", "-m", "coverage", "lcov", f"--data-file={data}", "-o", str(report)]
 
 
 def test_python_package_without_pytest_uses_unittest(tmp_path):
@@ -123,14 +125,14 @@ def test_python_package_without_pytest_uses_unittest(tmp_path):
     source = _write(tmp_path, "demo/app.py", "def run():\n    return 1\n")
     assert not uses_pytest(tmp_path)
     run, _lcov = python_coverage_commands("python3", "unittest", Path("data"), Path("out"), "demo")
-    assert "-m unittest discover -s ." in run
+    assert run[-5:] == ["-m", "unittest", "discover", "-s", "."]
     assert python_roots(tmp_path, [source]) == [tmp_path.resolve()]
 
 
 def test_rust_lcov_path_is_absolute():
     report = Path("/tmp/bookwriter/target/coverage/rust/src-tauri/lcov.info")
     command = rust_coverage_command("llvm-cov", report)
-    assert command == f"cargo llvm-cov --lcov --output-path {report}"
+    assert command == ["cargo", "llvm-cov", "--lcov", "--output-path", str(report)]
 
 
 def test_vitest_version_and_provider_install(tmp_path, monkeypatch):
@@ -176,7 +178,7 @@ def test_rust_kind_installs_llvm_cov_when_it_is_missing(monkeypatch):
         return None
 
     def shell(command, cwd):
-        if "cargo install" in command:
+        if command[:2] == ["cargo", "install"]:
             installed["llvm"] = True
         return 0
 
@@ -189,18 +191,19 @@ def test_rust_kind_installs_llvm_cov_when_it_is_missing(monkeypatch):
 
 
 def test_coverage_commands_are_issued_per_language(tmp_path, monkeypatch):
-    commands: list[str] = []
+    commands: list[str | list[str]] = []
 
     def shell(command, cwd):
         commands.append(command)
-        if "--data-file=" in command:
-            data = Path(command.split("--data-file=", 1)[1].split()[0])
+        if isinstance(command, str):
+            return 0
+        data_flag = next((part for part in command if part.startswith("--data-file=")), None)
+        if data_flag is not None:
+            data = Path(data_flag.split("=", 1)[1])
             data.parent.mkdir(parents=True, exist_ok=True)
             data.write_text("x", encoding="utf-8")
             return 1
-        if command.startswith("clj") or command.startswith("mvn") or command.startswith("go "):
-            return 1
-        if "vitest" in command or command.startswith("cargo "):
+        if command[0] in ("clj", "mvn", "go", "cargo") or "vitest" in command:
             return 1
         return 0
 
@@ -236,7 +239,8 @@ def test_coverage_commands_are_issued_per_language(tmp_path, monkeypatch):
         tmp_path / "src/lib.rs",
     ]
     run_coverage(tmp_path, files, None)
-    text = "\n".join(commands)
+    assert all(isinstance(command, list) for command in commands)
+    text = "\n".join(" ".join(command) for command in commands)
     assert "clj -M:cov --lcov" in text
     assert "clj -M:cov\n" in text or text.endswith("clj -M:cov") or "clj -M:cov" in text
     assert "mvn " in text
@@ -268,6 +272,31 @@ def test_run_shell_returns_the_child_status_and_reports_a_failed_start(tmp_path,
     monkeypatch.setattr("crapper.runners.subprocess.run", boom)
     assert run_shell("exit 3", tmp_path) == 127
     assert "failed to start" in capsys.readouterr().err
+
+
+def test_argv_executes_interpreter_and_script_paths_with_spaces(tmp_path):
+    # A real executable, rather than a mock, exercises Windows CreateProcess
+    # and POSIX exec argument handling. The venv keeps Python's runtime intact.
+    import venv
+
+    environment = tmp_path / "python environment"
+    venv.EnvBuilder(with_pip=False).create(environment)
+    executable = environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    script = _write(tmp_path, "script directory/check arguments.py",
+                    "import sys\nassert sys.argv[1:] == ['path with spaces', 'a&b', \"quote'word\"]\n")
+    assert run_shell([str(executable), str(script), "path with spaces", "a&b", "quote'word"], tmp_path) == 0
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows batch launcher resolution")
+def test_argv_resolves_batch_launcher_on_windows(tmp_path, monkeypatch):
+    launcher = _write(tmp_path, "tool directory/argv-tool.cmd", '@echo off\r\nif "%~1"=="path with spaces" (exit /b 0) else (exit /b 7)\r\n')
+    monkeypatch.setenv("PATH", str(launcher.parent) + ";" + os.environ["PATH"])
+    assert run_shell(["argv-tool", "path with spaces"], tmp_path) == 0
+
+
+def test_custom_shell_command_preserves_redirection(tmp_path):
+    run_coverage(tmp_path, [], 'echo shell-output > "custom report.txt"')
+    assert (tmp_path / "custom report.txt").read_text().strip() == "shell-output"
 
 
 def test_clean_removes_a_stale_directory_and_ignores_a_missing_one(tmp_path):
@@ -344,13 +373,13 @@ def test_missing_python_module_is_installed(tmp_path, monkeypatch):
 
     def shell(command, _cwd):
         commands.append(command)
-        if command.startswith("python3 -c"):
+        if command[:2] == ["python3", "-c"]:
             return 1
         return 0
 
     monkeypatch.setattr("crapper.runners.run_shell", shell)
     assert _ensure_python_module("python3", tmp_path, "coverage") is True
-    assert any("pip install" in command for command in commands)
+    assert any(command[1:3] == ["-m", "pip"] for command in commands)
     commands.clear()
 
     def already(_command, _cwd):

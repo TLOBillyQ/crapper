@@ -1,3 +1,4 @@
+import os
 import shutil
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from crapper.runners import (
     lua_interpreter,
     lua_roots,
     run_coverage,
+    run_shell,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "lua_project"
@@ -72,8 +74,8 @@ def test_lua_coverage_config_and_commands(tmp_path):
     assert "includeuntestedfiles = true" in config
     assert "[==[_spec$]==]" in config
     run, lcov = lua_coverage_commands("/opt/lua 5.4/bin/lua", tmp_path / "cfg.lua")
-    assert run == f"busted --lua='/opt/lua 5.4/bin/lua' -c --coverage-config-file={tmp_path / 'cfg.lua'}"
-    assert lcov == f"luacov -r lcov -c {tmp_path / 'cfg.lua'}"
+    assert run == ["busted", "--lua=/opt/lua 5.4/bin/lua", "-c", f"--coverage-config-file={tmp_path / 'cfg.lua'}"]
+    assert lcov == ["luacov", "-r", "lcov", "-c", str(tmp_path / "cfg.lua")]
 
 
 def test_relative_lcov_sources_are_anchored_to_the_lua_root(tmp_path):
@@ -90,6 +92,22 @@ def test_clean_clojure_keeps_lua_reports(tmp_path):
 
 def _toolchain_ready() -> bool:
     return all(shutil.which(tool) for tool in ("busted", "luacov")) and lua_interpreter() is not None
+
+
+@pytest.mark.skipif(not _toolchain_ready(), reason="busted, luacov, and Lua 5.4 are not installed")
+def test_lua_executable_reads_config_paths_with_spaces(tmp_path):
+    binary = os.environ.get("CRAPPER_TEST_LUA") or lua_interpreter()
+    if binary is None or Path(binary).suffix.lower() in (".cmd", ".bat"):
+        pytest.skip("set CRAPPER_TEST_LUA to a real Lua 5.4 executable to test native argv")
+    # Copy the runtime alongside the executable (Windows Lua may need its DLL).
+    runtime = tmp_path / "lua runtime with spaces"
+    shutil.copytree(Path(binary).parent, runtime)
+    executable = runtime / Path(binary).name
+    config = _write(tmp_path, "config directory/luacov.cfg.lua",
+                    lua_coverage_config(tmp_path / "stats file", tmp_path / "report file"))
+    assert run_shell([str(executable), "-e",
+                      "local c = dofile(arg[0]); assert(c.includeuntestedfiles == true)",
+                      "--", str(config)], tmp_path) == 0
 
 
 @pytest.mark.skipif(not _toolchain_ready(), reason="busted, luacov, and Lua 5.4 are not installed")
